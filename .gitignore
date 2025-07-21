@@ -1,0 +1,10 @@
+# Lingkungan virtual
+venv/
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Folder instance Flask
+instance/

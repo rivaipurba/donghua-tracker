@@ -1,63 +1,115 @@
-from flask import Flask, render_template, request, redirect
+import os
+from flask import Flask, render_template, request, redirect, flash
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 
+# Inisialisasi Aplikasi Flask
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///donghua.db"
+
+# --- Konfigurasi ---
+# Gunakan variabel lingkungan untuk DATABASE_URL di produksi,
+# dengan fallback ke database SQLite lokal untuk pengembangan.
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///donghua.db")
+# Ganti 'sqlite:///' dengan 'postgresql://' jika Render menggunakan PostgreSQL
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# Diperlukan untuk menggunakan flash messages
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "a-secret-key-for-development")
 
+
+# Inisialisasi Database dan Migrasi
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 
-# Database model
+# --- Model Database ---
 class Donghua(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(100), nullable=False)
+    title = db.Column(db.String(100), nullable=False, unique=True)
     last_episode = db.Column(db.Integer, nullable=False)
 
+    def __repr__(self):
+        return f"<Donghua {self.title}>"
 
-# ✅ Main home page route
+
+# --- Routes ---
 @app.route("/")
 def index():
+    """Menampilkan semua donghua, diurutkan berdasarkan judul."""
     donghuas = Donghua.query.order_by(Donghua.title.asc()).all()
     return render_template("index.html", donghuas=donghuas)
 
 
-# Add new donghua
 @app.route("/add", methods=["GET", "POST"])
 def add():
+    """Menambahkan donghua baru."""
     if request.method == "POST":
-        title = request.form["title"]
-        episode = request.form["episode"]
-        print("Adding:", title, episode)
+        title = request.form.get("title")
+        episode_str = request.form.get("episode")
 
-        new_donghua = Donghua(title=title, last_episode=int(episode))
-        db.session.add(new_donghua)
-        db.session.commit()
-        return redirect("/")
+        # Validasi input
+        if not title or not episode_str:
+            flash("Judul dan episode tidak boleh kosong.", "error")
+            return render_template("add.html")
+
+        try:
+            episode = int(episode_str)
+            if episode < 0:
+                flash("Episode tidak boleh negatif.", "error")
+                return render_template("add.html")
+
+            # Cek apakah judul sudah ada
+            if Donghua.query.filter_by(title=title).first():
+                flash(f"Donghua dengan judul '{title}' sudah ada.", "error")
+                return render_template("add.html")
+
+            new_donghua = Donghua(title=title, last_episode=episode)
+            db.session.add(new_donghua)
+            db.session.commit()
+            flash(f"'{title}' berhasil ditambahkan!", "success")
+            return redirect("/")
+        except ValueError:
+            flash("Episode harus berupa angka.", "error")
+            return render_template("add.html")
+
     return render_template("add.html")
 
 
-# Delete a donghua
 @app.route("/delete/<int:id>")
 def delete(id):
+    """Menghapus donghua berdasarkan ID."""
     donghua = Donghua.query.get_or_404(id)
+    title = donghua.title
     db.session.delete(donghua)
     db.session.commit()
+    flash(f"'{title}' berhasil dihapus.", "success")
     return redirect("/")
 
 
-# Update donghua
 @app.route("/update/<int:id>", methods=["POST"])
 def update(id):
+    """Memperbarui episode terakhir dari sebuah donghua."""
     donghua = Donghua.query.get_or_404(id)
-    donghua.title = request.form["title"]
-    donghua.last_episode = int(request.form["episode"])
-    db.session.commit()
+    episode_str = request.form.get("episode")
+
+    try:
+        new_episode = int(episode_str)
+        if new_episode < 0:
+            flash("Episode tidak boleh negatif.", "error")
+        else:
+            donghua.last_episode = new_episode
+            db.session.commit()
+            flash(f"Episode untuk '{donghua.title}' berhasil diperbarui.", "success")
+    except (ValueError, TypeError):
+        flash("Input episode tidak valid. Harus berupa angka.", "error")
+
     return redirect("/")
 
 
-# Initialize database
+# Blok ini hanya untuk menjalankan server development lokal.
+# Di Render, Gunicorn yang akan menjalankan aplikasi.
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
     app.run(debug=True)

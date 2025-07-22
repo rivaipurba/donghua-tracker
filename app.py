@@ -9,12 +9,27 @@ app = Flask(__name__)
 # --- Konfigurasi ---
 # Gunakan variabel lingkungan untuk DATABASE_URL di produksi,
 # dengan fallback ke database SQLite lokal untuk pengembangan.
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///donghua.db")
+# DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///donghua.db")
 # Ganti 'sqlite:///' dengan 'postgresql://' jika Render menggunakan PostgreSQL
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+# if DATABASE_URL.startswith("postgres://"):
+#     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+# app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+
+if "PYTHONANYWHERE_DOMAIN" in os.environ:
+    # Konfigurasi untuk database MySQL di PythonAnywhere
+    # Ambil nilai dari environment variables
+    db_user = os.environ.get("DB_USER")
+    db_password = os.environ.get("DB_PASSWORD")
+    db_host = os.environ.get("DB_HOST")
+    db_name = os.environ.get("DB_NAME")
+    app.config["SQLALCHEMY_DATABASE_URI"] = (
+        f"mysql+pymysql://{db_user}:{db_password}@{db_host}/{db_name}"
+    )
+else:
+    # Konfigurasi untuk database SQLite lokal
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///donghua.db"
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # Diperlukan untuk menggunakan flash messages
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "a-secret-key-for-development")

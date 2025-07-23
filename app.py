@@ -93,7 +93,7 @@ def add():
     return render_template("add.html")
 
 
-@app.route("/delete/<int:id>")
+@app.route("/delete/<int:id>", methods=["POST"])
 def delete(id):
     """Menghapus donghua berdasarkan ID."""
     donghua = Donghua.query.get_or_404(id)
@@ -106,18 +106,39 @@ def delete(id):
 
 @app.route("/update/<int:id>", methods=["POST"])
 def update(id):
-    """Memperbarui episode terakhir dari sebuah donghua."""
+    """Memperbarui judul DAN episode terakhir dari sebuah donghua."""
     donghua = Donghua.query.get_or_404(id)
-    episode_str = request.form.get("episode")
+
+    # 1. Ambil data JUDUL dan EPISODE dari form
+    new_title = request.form.get("title")
+    new_episode_str = request.form.get("episode")
+
+    # 2. Validasi dasar: pastikan input tidak kosong
+    if not new_title or not new_episode_str:
+        flash("Judul dan episode tidak boleh kosong.", "error")
+        return redirect("/")
 
     try:
-        new_episode = int(episode_str)
-        if new_episode < 0:
-            flash("Episode tidak boleh negatif.", "error")
-        else:
-            donghua.last_episode = new_episode
-            db.session.commit()
-            flash(f"Episode untuk '{donghua.title}' berhasil diperbarui.", "success")
+        new_episode = int(new_episode_str)
+
+        # 3. PENTING: Cek apakah judul baru sudah dipakai oleh donghua LAIN
+        #    Kita filter judul yang sama, TAPI bukan untuk item dengan ID yang sama (id != id)
+        existing_donghua = Donghua.query.filter(
+            Donghua.title == new_title, Donghua.id != id
+        ).first()
+        if existing_donghua:
+            flash(f"Judul '{new_title}' sudah digunakan oleh donghua lain.", "error")
+            return redirect("/")
+
+        # 4. Jika semua validasi lolos, update data di database
+        donghua.title = new_title
+        donghua.last_episode = new_episode
+
+        # 5. Simpan semua perubahan ke database
+        db.session.commit()
+
+        flash(f"Data untuk '{new_title}' berhasil diperbarui.", "success")
+
     except (ValueError, TypeError):
         flash("Input episode tidak valid. Harus berupa angka.", "error")
 
